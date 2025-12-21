@@ -19,35 +19,25 @@ def main():
         env = QuadHumanoidEnv(render_mode=None)
 
     obs, info = env.reset()
-    print("Simulation started. Testing thrust...")
+    print("Simulation started. Running dummy policy (zero actions)...")
 
     # Simulation loop
     for i in range(500):
         # Action space: 17 humanoid joints + 4 rotors
-        # Indices 17, 18, 19, 20 are the rotors
+        # Zero action means no motor torque (passive dynamics)
         action = np.zeros(env.action_space.shape)
-        
-        # Apply 40% thrust (Control range 0-50, so 20. Gear=10 -> 200N per rotor -> 800N total)
-        # Humanoid weight is approx 700N. This should lift it slowly.
-        thrust_ctrl = 20.0 
-        action[17:21] = thrust_ctrl
-        
-        # Keep legs somewhat stiff? 
-        # The humanoid default controller expects actions in range -0.4 to 0.4 for joints
-        # We leave them at 0 (damped)
         
         obs, reward, terminated, truncated, info = env.step(action)
         
         if i % 10 == 0:
             z_pos = info['z_pos']
-            vz = info.get('z_velocity', 0) # We didn't put z_vel in info yet, but let's check z_pos
             print(f"Step {i}: Height={z_pos:.3f} m")
             
         if terminated or truncated:
             print("Terminated/Truncated")
             break
             
-        # time.sleep(0.01) # Slow down for visualization if running locally
+        time.sleep(0.01) # Slow down for visualization
 
     env.close()
 
