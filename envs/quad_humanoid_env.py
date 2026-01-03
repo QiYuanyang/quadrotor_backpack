@@ -42,6 +42,9 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         if not hasattr(self, "observation_space") or self.observation_space is None:
             obs = self._get_obs()
             self.observation_space = Box(low=-np.inf, high=np.inf, shape=obs.shape, dtype=np.float64)
+        
+        # Track previous action for smoothness reward
+        self.previous_action = None
 
     def step(self, action):
         xy_position_before = self.data.body("torso").xpos[:2].copy()
@@ -70,31 +73,63 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             1 - 2*(x**2 + y**2)
         ])
         
-        # Reward function for horizontal flight (improved shaping)
-        # 1. Maintain target height (5.0m - easier task)
+        # === DENSE REWARD SHAPING ===
+        
+        # 1. Base survival bonus (always positive if alive)
+        reward = 5.0
+        
+        # 2. Height tracking (dense, continuous feedback)
         target_height = 5.0
         height_error = abs(z_pos - target_height)
-        height_reward = -2.0 * height_error  # Reduced penalty
+        height_reward = -2.0 * height_error
         
-        # 2. Maintain horizontal orientation (z-axis should point down)
-        # Target: z_axis_world = [0, 0, -1]
+        # 3. Orientation tracking (dense, continuous feedback)
         orientation_error = np.linalg.norm(z_axis_world - np.array([0, 0, -1]))
-        orientation_reward = -5.0 * orientation_error  # Reduced penalty
+        orientation_reward = -5.0 * orientation_error
         
-        # 3. Minimize XY drift (hover in place)
-        xy_velocity_penalty = -0.1 * (xy_velocity[0]**2 + xy_velocity[1]**2)  # Smaller penalty
-        
-        # 4. Minimize Z velocity (stable hover)
-        z_velocity_penalty = -0.5 * z_vel**2  # Reduced penalty
+        # 4. Velocity penalties (encourage stability)
+        xy_velocity_penalty = -0.1 * (xy_velocity[0]**2 + xy_velocity[1]**2)
+        z_velocity_penalty = -0.5 * z_vel**2
         
         # 5. Control cost (penalize large actions)
-        ctrl_cost = -0.005 * np.square(action).sum()  # Smaller penalty
+        ctrl_cost = -0.005 * np.square(action).sum()
         
-        # 6. Survival bonus (increased to encourage staying alive)
-        survival_bonus = 5.0
+        # 6. Action smoothness (encourage stable control)
+        if self.previous_action is not None:
+            smoothness_reward = -0.1 * np.sum((action - self.previous_action)**2)
+        else:
+            smoothness_reward = 0.0
+        self.previous_action = action.copy()
         
-        reward = (height_reward + orientation_reward + xy_velocity_penalty + 
-                  z_velocity_penalty + ctrl_cost + survival_bonus)
+        # 7. Thrust usage bonus (encourage learning to use rotors)
+        thrust_actions = action[17:21]  # Last 4 actions are thrust
+        thrust_bonus = 0.5 * np.mean(np.clip(thrust_actions, 0, 50)) / 50.0
+        
+        # === MILESTONE BONUSES (Intermediate goals) ===
+        
+        # Milestone 1: Stay airborne (above 2m)
+        if z_pos > 2.0:
+            reward += 10.0
+        
+        # Milestone 2: Good orientation (face down)
+        if orientation_error < 0.3:
+            reward += 5.0
+        
+        # Milestone 3: Near target height (within 1m)
+        if abs(height_error) < 1.0:
+            reward += 10.0
+        
+        # Milestone 4: Stable hover (close to target, low velocity)
+        if abs(height_error) < 0.5 and abs(z_vel) < 0.2:
+            reward += 20.0
+        
+        # Milestone 5: Perfect hover (very close, minimal drift)
+        if abs(height_error) < 0.2 and abs(z_vel) < 0.1 and np.linalg.norm(xy_velocity) < 0.1:
+            reward += 30.0
+        
+        # === TOTAL REWARD ===
+        reward += (height_reward + orientation_reward + xy_velocity_penalty + 
+                   z_velocity_penalty + ctrl_cost + smoothness_reward + thrust_bonus)
         
         # Termination conditions
         terminated = False
@@ -114,6 +149,9 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             "height_reward": height_reward,
             "orientation_reward": orientation_reward,
             "orientation_error": orientation_error,
+            "height_error": height_error,
+            "smoothness_reward": smoothness_reward,
+            "thrust_bonus": thrust_bonus,
         }
 
         if self.render_mode == "human":
@@ -168,6 +206,9 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         
         # Set initial velocity to zero
         qvel[:6] = 0.0
+        
+        # Reset action tracking
+        self.previous_action = None
         
         self.set_state(qpos, qvel)
         return self._get_obs()
