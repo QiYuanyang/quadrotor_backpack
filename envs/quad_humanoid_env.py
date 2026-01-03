@@ -70,28 +70,28 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             1 - 2*(x**2 + y**2)
         ])
         
-        # Reward function for horizontal flight
-        # 1. Maintain target height (2.0m)
-        target_height = 2.0
+        # Reward function for horizontal flight (improved shaping)
+        # 1. Maintain target height (5.0m - easier task)
+        target_height = 5.0
         height_error = abs(z_pos - target_height)
-        height_reward = -5.0 * height_error
+        height_reward = -2.0 * height_error  # Reduced penalty
         
         # 2. Maintain horizontal orientation (z-axis should point down)
         # Target: z_axis_world = [0, 0, -1]
         orientation_error = np.linalg.norm(z_axis_world - np.array([0, 0, -1]))
-        orientation_reward = -10.0 * orientation_error
+        orientation_reward = -5.0 * orientation_error  # Reduced penalty
         
         # 3. Minimize XY drift (hover in place)
-        xy_velocity_penalty = -0.5 * (xy_velocity[0]**2 + xy_velocity[1]**2)
+        xy_velocity_penalty = -0.1 * (xy_velocity[0]**2 + xy_velocity[1]**2)  # Smaller penalty
         
         # 4. Minimize Z velocity (stable hover)
-        z_velocity_penalty = -2.0 * z_vel**2
+        z_velocity_penalty = -0.5 * z_vel**2  # Reduced penalty
         
         # 5. Control cost (penalize large actions)
-        ctrl_cost = -0.01 * np.square(action).sum()
+        ctrl_cost = -0.005 * np.square(action).sum()  # Smaller penalty
         
-        # 6. Survival bonus
-        survival_bonus = 1.0
+        # 6. Survival bonus (increased to encourage staying alive)
+        survival_bonus = 5.0
         
         reward = (height_reward + orientation_reward + xy_velocity_penalty + 
                   z_velocity_penalty + ctrl_cost + survival_bonus)
@@ -100,7 +100,7 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         terminated = False
         if z_pos < 0.2:  # Hit ground
             terminated = True
-            reward -= 100.0
+            reward -= 10.0  # Smaller crash penalty
         if z_pos > 5.0:  # Too high
             terminated = True
         if abs(xy_position_after[0]) > 3.0 or abs(xy_position_after[1]) > 3.0:  # Drifted too far
@@ -153,10 +153,10 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         # qpos[0:3] = x, y, z position
         # qpos[3:7] = quaternion (w, x, y, z) for orientation
         
-        # Set position: 2 meters up
+        # Set position: 5 meters up (easier task, more time to learn)
         qpos[0] = 0.0  # x
         qpos[1] = 0.0  # y
-        qpos[2] = 2.0  # z height
+        qpos[2] = 5.0  # z height
         
         # Set orientation: Pitch down 90 degrees (face ground)
         # Quaternion for 90 degree pitch (rotation around Y-axis)
