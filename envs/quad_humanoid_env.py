@@ -54,38 +54,66 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         # Observations
         observation = self._get_obs()
         
-        # Rewards
-        # 1. Height reward (Takeoff)
+        # Get current state
         z_pos = self.data.body("torso").xpos[2]
+        z_vel = self.data.qvel[2]
+        
+        # Get torso orientation (quaternion)
+        quat = self.data.body("torso").xquat  # [w, x, y, z]
+        
+        # Compute the z-axis of the body frame in world coordinates
+        # For Superman pose (face down), z-axis should point down: [0, 0, -1]
+        w, x, y, z = quat
+        z_axis_world = np.array([
+            2*(x*z + w*y),
+            2*(y*z - w*x),
+            1 - 2*(x**2 + y**2)
+        ])
+        
+        # Reward function for horizontal flight
+        # 1. Maintain target height (2.0m)
         target_height = 2.0
-        height_reward = -10.0 * (z_pos - target_height) ** 2
-        if z_pos > 0.5: # Bonus for being off ground
-            height_reward += 10.0
-            
-        # 2. Stability reward (Upright)
-        # Get torso quaternion
-        quat = self.data.body("torso").xquat
-        # Upright is [1, 0, 0, 0] (w, x, y, z) roughly
-        # Simple check: z-axis of torso frame should be close to global z
-        # But let's just use a small penalty for angular velocity and deviation from upright
+        height_error = abs(z_pos - target_height)
+        height_reward = -5.0 * height_error
         
-        # 3. Control cost
-        ctrl_cost = 0.1 * np.square(action).sum()
+        # 2. Maintain horizontal orientation (z-axis should point down)
+        # Target: z_axis_world = [0, 0, -1]
+        orientation_error = np.linalg.norm(z_axis_world - np.array([0, 0, -1]))
+        orientation_reward = -10.0 * orientation_error
         
-        reward = height_reward - ctrl_cost + 10.0 # Survival bonus
+        # 3. Minimize XY drift (hover in place)
+        xy_velocity_penalty = -0.5 * (xy_velocity[0]**2 + xy_velocity[1]**2)
         
-        # Termination
+        # 4. Minimize Z velocity (stable hover)
+        z_velocity_penalty = -2.0 * z_vel**2
+        
+        # 5. Control cost (penalize large actions)
+        ctrl_cost = -0.01 * np.square(action).sum()
+        
+        # 6. Survival bonus
+        survival_bonus = 1.0
+        
+        reward = (height_reward + orientation_reward + xy_velocity_penalty + 
+                  z_velocity_penalty + ctrl_cost + survival_bonus)
+        
+        # Termination conditions
         terminated = False
-        if z_pos < 0.3: # Fell down
-            # terminated = True # Don't terminate immediately for landing training?
-            pass
-        if z_pos > 5.0: # Too high
+        if z_pos < 0.2:  # Hit ground
+            terminated = True
+            reward -= 100.0
+        if z_pos > 5.0:  # Too high
+            terminated = True
+        if abs(xy_position_after[0]) > 3.0 or abs(xy_position_after[1]) > 3.0:  # Drifted too far
             terminated = True
 
         info = {
             "z_pos": z_pos,
+            "z_vel": z_vel,
             "x_velocity": xy_velocity[0],
             "y_velocity": xy_velocity[1],
+            "height_reward": height_reward,
+            "orientation_reward": orientation_reward,
+            "orientation_error": orientation_error,
         }
 
         if self.render_mode == "human":
@@ -111,8 +139,8 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         return np.concatenate((position, velocity))
 
     def reset_model(self):
-        noise_low = -0.1
-        noise_high = 0.1
+        noise_low = -0.05
+        noise_high = 0.05
 
         qpos = self.init_qpos + self.np_random.uniform(
             low=noise_low, high=noise_high, size=self.model.nq
@@ -121,9 +149,25 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             low=noise_low, high=noise_high, size=self.model.nv
         )
         
-        # Ensure it starts on the ground (z height)
-        # qpos[2] is usually z height of root
-        qpos[2] = 1.4 # Reset to standing height
+        # Superman pose: spawn in mid-air, horizontal (face down)
+        # qpos[0:3] = x, y, z position
+        # qpos[3:7] = quaternion (w, x, y, z) for orientation
+        
+        # Set position: 2 meters up
+        qpos[0] = 0.0  # x
+        qpos[1] = 0.0  # y
+        qpos[2] = 2.0  # z height
+        
+        # Set orientation: Pitch down 90 degrees (face ground)
+        # Quaternion for 90 degree pitch (rotation around Y-axis)
+        angle = np.pi / 2  # 90 degrees
+        qpos[3] = np.cos(angle / 2)  # w
+        qpos[4] = 0.0                 # x
+        qpos[5] = np.sin(angle / 2)  # y (pitch axis)
+        qpos[6] = 0.0                 # z
+        
+        # Set initial velocity to zero
+        qvel[:6] = 0.0
         
         self.set_state(qpos, qvel)
         return self._get_obs()
