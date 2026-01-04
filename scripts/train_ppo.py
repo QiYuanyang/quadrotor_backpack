@@ -22,10 +22,10 @@ def make_env():
 
 def main():
     # Configuration
-    num_envs = 16  # Run 16 parallel environments for faster training
-    total_timesteps = 5_000_000  # 5 million steps
+    num_envs = 64  # Run 64 parallel environments for faster training
+    total_timesteps = 50_000_000  # 50 million steps
     n_steps = 2048  # Number of steps per update (per environment)
-    batch_size = 256  # Larger batch size for better GPU utilization
+    batch_size = 1024  # Larger batch size for better GPU utilization
     n_epochs = 10
     learning_rate = 3e-4
     
@@ -54,6 +54,9 @@ def main():
     model = PPO(
         "MlpPolicy",
         env,
+        policy_kwargs=dict(
+            net_arch=[dict(pi=[256, 256, 256], vf=[256, 256, 256])]
+        ),
         learning_rate=learning_rate,
         n_steps=n_steps,
         batch_size=batch_size,
@@ -61,7 +64,7 @@ def main():
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.01,  # Add exploration bonus
+        ent_coef=0.01,
         vf_coef=0.5,
         max_grad_norm=0.5,
         verbose=1,
@@ -74,7 +77,7 @@ def main():
     
     # Callbacks
     checkpoint_callback = CheckpointCallback(
-        save_freq=50000 // num_envs,  # Adjust frequency for parallel envs
+        save_freq=500000 // num_envs,  # Adjust frequency for parallel envs
         save_path=checkpoint_dir,
         name_prefix="quad_humanoid_ppo"
     )

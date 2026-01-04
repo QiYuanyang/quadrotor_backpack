@@ -48,6 +48,16 @@ def play(model_path, episodes=5, render=True):
             episode_reward += reward
             step_count += 1
             
+            # Print thrust forces every 10 steps
+            if render and step_count % 10 == 0:
+                if 'force1' in info:
+                    print(f"  Step {step_count}: Forces = "
+                          f"R1:{info['force1']:6.1f}N  "
+                          f"R2:{info['force2']:6.1f}N  "
+                          f"R3:{info['force3']:6.1f}N  "
+                          f"R4:{info['force4']:6.1f}N  "
+                          f"| Total:{sum([info[f'force{i}'] for i in range(1,5)]):7.1f}N")
+            
             if render:
                 env.render()
         

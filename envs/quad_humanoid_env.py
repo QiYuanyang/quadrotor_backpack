@@ -49,6 +49,9 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
     def step(self, action):
         xy_position_before = self.data.body("torso").xpos[:2].copy()
         
+        # Store thrust actions for visualization
+        self.thrust_actions = action[-4:].copy()  # Last 4 actions are rotor thrusts
+        
         self.do_simulation(action, self.frame_skip)
         
         xy_position_after = self.data.body("torso").xpos[:2].copy()
@@ -76,16 +79,16 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         # === DENSE REWARD SHAPING ===
         
         # 1. Base survival bonus (always positive if alive)
-        reward = 5.0
+        reward = 10.0  # Increased survival bonus to encourage staying alive longer
         
         # 2. Height tracking (dense, continuous feedback)
-        target_height = 2.0  # Lower target for easier task starting from ground
+        target_height = 2.5  # Match spawn height for hovering in place
         height_error = abs(z_pos - target_height)
-        height_reward = -2.0 * height_error
+        height_reward = -1.0 * height_error  # Reduced penalty for easier learning
         
         # 3. Orientation tracking (dense, continuous feedback)
         orientation_error = np.linalg.norm(z_axis_world - np.array([0, 0, -1]))
-        orientation_reward = -5.0 * orientation_error
+        orientation_reward = -2.0 * orientation_error  # Reduced penalty for easier learning
         
         # 4. Velocity penalties (encourage stability)
         xy_velocity_penalty = -0.1 * (xy_velocity[0]**2 + xy_velocity[1]**2)
@@ -133,9 +136,6 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         
         # Termination conditions
         terminated = False
-        if z_pos < 0.2:  # Hit ground
-            terminated = True
-            reward -= 10.0  # Smaller crash penalty
         if z_pos > 5.0:  # Too high
             terminated = True
         if abs(xy_position_after[0]) > 3.0 or abs(xy_position_after[1]) > 3.0:  # Drifted too far
@@ -155,9 +155,63 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         }
 
         if self.render_mode == "human":
+            # Update force arrow visualization
+            if hasattr(self, 'thrust_actions'):
+                self._update_force_arrow()
             self.render()
+            
+        # Add thrust values to info for visualization
+        if hasattr(self, 'thrust_actions'):
+            info['thrust1'] = float(self.thrust_actions[0])
+            info['thrust2'] = float(self.thrust_actions[1])
+            info['thrust3'] = float(self.thrust_actions[2])
+            info['thrust4'] = float(self.thrust_actions[3])
+            # Convert to actual forces (action * gear)
+            info['force1'] = float(self.thrust_actions[0] * 10)  # gear = 10
+            info['force2'] = float(self.thrust_actions[1] * 10)
+            info['force3'] = float(self.thrust_actions[2] * 10)
+            info['force4'] = float(self.thrust_actions[3] * 10)
 
         return observation, reward, terminated, False, info
+    
+    def _update_force_arrow(self):
+        """Update the force arrow visualization based on current thrust."""
+        import mujoco
+        
+        # Get total thrust in Newtons
+        total_thrust = np.sum(self.thrust_actions) * 10.0  # gear = 10
+        
+        # Normalize to arrow length (0 to 1.0 meters)
+        max_thrust = 2000.0  # 4 rotors * 500N max
+        arrow_length = (total_thrust / max_thrust) * 1.0  # Scale to 0-1m
+        
+        # Get quadrotor position and orientation
+        quad_pos = self.data.body("quadrotor").xpos.copy()
+        quad_mat = self.data.body("quadrotor").xmat.reshape(3, 3)
+        
+        # Thrust direction in quadrotor's local frame (Z-axis)
+        local_thrust_dir = np.array([0, 0, 1])  # Up in local frame
+        world_thrust_dir = quad_mat @ local_thrust_dir
+        
+        # Calculate arrow endpoints
+        arrow_start = quad_pos + np.array([0, 0, 0.05])  # Offset from center
+        arrow_end = arrow_start + world_thrust_dir * arrow_length
+        
+        # Render the arrow using MuJoCo's visualization API
+        if hasattr(self, 'mujoco_renderer') and self.mujoco_renderer is not None:
+            viewer = self.mujoco_renderer.viewer
+            if viewer is not None and hasattr(viewer, 'add_marker'):
+                # Color based on thrust magnitude (green = low, yellow = medium, red = high)
+                thrust_ratio = total_thrust / max_thrust
+                color = np.array([thrust_ratio, 1.0 - thrust_ratio * 0.5, 0, 0.8])
+                
+                viewer.add_marker(
+                    pos=arrow_start,
+                    size=np.array([0.02, 0.02, arrow_length]),
+                    rgba=color,
+                    type=mujoco.mjtGeom.mjGEOM_ARROW,
+                    label=""
+                )
 
     def _get_obs(self):
         position = self.data.qpos.flat.copy()
@@ -187,14 +241,14 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             low=noise_low, high=noise_high, size=self.model.nv
         )
         
-        # Superman pose: spawn close to ground, horizontal (face down, lying)
+        # Superman pose: spawn at medium height, horizontal (face down, lying)
         # qpos[0:3] = x, y, z position
         # qpos[3:7] = quaternion (w, x, y, z) for orientation
         
-        # Set position: 0.5 meters up (close to ground, lying position)
+        # Set position: 2.5 meters up (easier - more time to learn before hitting ground)
         qpos[0] = 0.0  # x
         qpos[1] = 0.0  # y
-        qpos[2] = 0.5  # z height - just above ground
+        qpos[2] = 0.5  # z height - medium height for learning
         
         # Set orientation: Pitch down 90 degrees (face ground, lying horizontally)
         # Quaternion for 90 degree pitch (rotation around Y-axis)
