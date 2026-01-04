@@ -44,11 +44,11 @@
                 <geom name="quad_arm3" fromto="0 0 0 -0.2 -0.2 0" size="0.01" type="capsule" class="quad"/>
                 <geom name="quad_arm4" fromto="0 0 0  0.2 -0.2 0" size="0.01" type="capsule" class="quad"/>
                 
-                <!-- Rotor Sites -->
-                <site name="rotor1" pos=" 0.2  0.2 0.02" size="0.05" rgba="1 0 0 0.5"/>
-                <site name="rotor2" pos="-0.2  0.2 0.02" size="0.05" rgba="0 1 0 0.5"/>
-                <site name="rotor3" pos="-0.2 -0.2 0.02" size="0.05" rgba="0 0 1 0.5"/>
-                <site name="rotor4" pos=" 0.2 -0.2 0.02" size="0.05" rgba="1 1 0 0.5"/>
+                <!-- Rotor Sites with Force Visualization -->
+                <site name="rotor1" pos=" 0.2  0.2 0.02" size="0.05" rgba="1 0 0 0.5" type="cylinder"/>
+                <site name="rotor2" pos="-0.2  0.2 0.02" size="0.05" rgba="0 1 0 0.5" type="cylinder"/>
+                <site name="rotor3" pos="-0.2 -0.2 0.02" size="0.05" rgba="0 0 1 0.5" type="cylinder"/>
+                <site name="rotor4" pos=" 0.2 -0.2 0.02" size="0.05" rgba="1 1 0 0.5" type="cylinder"/>
                 
                 <!-- Sensors -->
                 <site name="imu_accel" pos="0 0 0" size="0.01" rgba="1 0 1 1"/>

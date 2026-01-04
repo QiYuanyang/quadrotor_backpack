@@ -79,7 +79,7 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
         reward = 5.0
         
         # 2. Height tracking (dense, continuous feedback)
-        target_height = 5.0
+        target_height = 2.0  # Lower target for easier task starting from ground
         height_error = abs(z_pos - target_height)
         height_reward = -2.0 * height_error
         
@@ -187,16 +187,16 @@ class QuadHumanoidEnv(MujocoEnv, utils.EzPickle):
             low=noise_low, high=noise_high, size=self.model.nv
         )
         
-        # Superman pose: spawn in mid-air, horizontal (face down)
+        # Superman pose: spawn close to ground, horizontal (face down, lying)
         # qpos[0:3] = x, y, z position
         # qpos[3:7] = quaternion (w, x, y, z) for orientation
         
-        # Set position: 5 meters up (easier task, more time to learn)
+        # Set position: 0.5 meters up (close to ground, lying position)
         qpos[0] = 0.0  # x
         qpos[1] = 0.0  # y
-        qpos[2] = 5.0  # z height
+        qpos[2] = 0.5  # z height - just above ground
         
-        # Set orientation: Pitch down 90 degrees (face ground)
+        # Set orientation: Pitch down 90 degrees (face ground, lying horizontally)
         # Quaternion for 90 degree pitch (rotation around Y-axis)
         angle = np.pi / 2  # 90 degrees
         qpos[3] = np.cos(angle / 2)  # w

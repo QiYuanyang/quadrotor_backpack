@@ -2,7 +2,7 @@ import sys
 import os
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 import torch
@@ -14,15 +14,18 @@ from envs.quad_humanoid_env import QuadHumanoidEnv
 
 def make_env():
     """Create and wrap the environment."""
-    env = QuadHumanoidEnv(render_mode=None)
-    env = Monitor(env)
-    return env
+    def _init():
+        env = QuadHumanoidEnv(render_mode=None)
+        env = Monitor(env)
+        return env
+    return _init
 
 def main():
     # Configuration
+    num_envs = 16  # Run 16 parallel environments for faster training
     total_timesteps = 5_000_000  # 5 million steps
-    n_steps = 2048  # Number of steps per update
-    batch_size = 64
+    n_steps = 2048  # Number of steps per update (per environment)
+    batch_size = 256  # Larger batch size for better GPU utilization
     n_epochs = 10
     learning_rate = 3e-4
     
@@ -32,15 +35,22 @@ def main():
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
     
-    print("Creating environment...")
-    # Create vectorized environment
-    env = DummyVecEnv([make_env])
+    print(f"Creating {num_envs} parallel environments...")
+    # Create parallel vectorized environments using SubprocVecEnv for true parallelism
+    env = SubprocVecEnv([make_env() for _ in range(num_envs)])
     
     # Normalize observations and rewards
     env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.0)
     
     print("Creating PPO model...")
     # Create PPO model
+    # With larger batch sizes and parallel envs, GPU becomes beneficial
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    print(f"Parallel environments: {num_envs}")
+    print(f"Batch size: {batch_size}")
+    print(f"Total rollout steps per update: {n_steps * num_envs}")
+    
     model = PPO(
         "MlpPolicy",
         env,
@@ -56,26 +66,27 @@ def main():
         max_grad_norm=0.5,
         verbose=1,
         tensorboard_log=log_dir,
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        device=device
     )
     
-    print(f"Using device: {model.device}")
+    print(f"\nTraining will be ~{num_envs}x faster with parallel environments!")
+    print(f"Expected wall-clock time: ~{total_timesteps / (num_envs * 5000):.1f} hours\n")
     
     # Callbacks
     checkpoint_callback = CheckpointCallback(
-        save_freq=50000,
+        save_freq=50000 // num_envs,  # Adjust frequency for parallel envs
         save_path=checkpoint_dir,
         name_prefix="quad_humanoid_ppo"
     )
     
-    eval_env = DummyVecEnv([make_env])
+    eval_env = SubprocVecEnv([make_env() for _ in range(4)])  # Use 4 envs for evaluation
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_obs=10.0)
     
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path=checkpoint_dir,
         log_path=log_dir,
-        eval_freq=10000,
+        eval_freq=10000 // num_envs,  # Adjust frequency for parallel envs
         n_eval_episodes=5,
         deterministic=True
     )
