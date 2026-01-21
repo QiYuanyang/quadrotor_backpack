@@ -47,7 +47,7 @@ class QuadHumanoidEnvCfg(DirectRLEnvCfg):
     decimation = 4  # Control at 50Hz (200Hz / 4)
     num_envs = 4  # Start with small number for testing
     num_actions = 14  # 10 actuated humanoid joints + 4 rotor thrusts
-    num_observations = 378  # Full state: qpos + qvel
+    num_observations = 39  # root_pos(3) + root_quat(4) + joint_pos(13) + root_lin_vel(3) + root_ang_vel(3) + joint_vel(13)
     
     # Scene (robot configuration set below)
     scene: QuadHumanoidSceneCfg = QuadHumanoidSceneCfg(num_envs=4, env_spacing=4.0)
@@ -63,7 +63,7 @@ class QuadHumanoidEnvCfg(DirectRLEnvCfg):
     rotor_distance = 0.2  # Distance from quadrotor center to rotors (m)
     
     # Spaces
-    observation_space = gym.spaces.Box(low=-float('inf'), high=float('inf'), shape=(378,))
+    observation_space = gym.spaces.Box(low=-float('inf'), high=float('inf'), shape=(39,))
     action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(14,))
     
     def __post_init__(self):

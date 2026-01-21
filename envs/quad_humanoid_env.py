@@ -125,7 +125,7 @@ class QuadHumanoidEnv(DirectRLEnv):
         )
 
     def _get_observations(self) -> dict:
-        """Get observations matching MuJoCo's 378-dim observation (qpos + qvel)."""
+        """Get observations from robot state (qpos + qvel)."""
         # Get robot state
         root_pos_w = self.robot.data.root_pos_w  # (num_envs, 3)
         root_quat_w = self.robot.data.root_quat_w  # (num_envs, 4)
@@ -134,9 +134,10 @@ class QuadHumanoidEnv(DirectRLEnv):
         joint_pos = self.robot.data.joint_pos  # (num_envs, num_joints)
         joint_vel = self.robot.data.joint_vel  # (num_envs, num_joints)
         
-        # Concatenate to match MuJoCo observation structure:
-        # qpos: root_pos(3) + root_quat(4) + joint_pos
-        # qvel: root_lin_vel(3) + root_ang_vel(3) + joint_vel
+        # Concatenate observation:
+        # qpos: root_pos(3) + root_quat(4) + joint_pos(13)
+        # qvel: root_lin_vel(3) + root_ang_vel(3) + joint_vel(13)
+        # Total: 3 + 4 + 13 + 3 + 3 + 13 = 39
         obs = torch.cat([
             root_pos_w,
             root_quat_w,

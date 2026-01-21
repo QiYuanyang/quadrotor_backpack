@@ -56,8 +56,8 @@ The humanoid robot with quadrotor backpack must:
 
 ## Environment Specs
 
-- **Observations**: 378-dim (full state: qpos + qvel)
-- **Actions**: 25-dim (21 humanoid joints + 4 rotor thrusts)
+- **Observations**: 39-dim (root_pos(3) + root_quat(4) + joint_pos(13) + root_lin_vel(3) + root_ang_vel(3) + joint_vel(13))
+- **Actions**: 14-dim (10 actuated humanoid joints + 4 rotor thrusts)
 - **Control Rate**: 50Hz
 - **Episode Length**: 10 seconds
 - **Parallel Envs**: 1024+ (GPU accelerated)
