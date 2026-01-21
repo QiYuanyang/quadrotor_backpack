@@ -46,7 +46,7 @@ class QuadHumanoidEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.0  # 10 seconds per episode
     decimation = 4  # Control at 50Hz (200Hz / 4)
     num_envs = 4  # Start with small number for testing
-    num_actions = 25  # 21 humanoid joints + 4 rotor thrusts
+    num_actions = 14  # 10 actuated humanoid joints + 4 rotor thrusts
     num_observations = 378  # Full state: qpos + qvel
     
     # Scene (robot configuration set below)
@@ -64,7 +64,7 @@ class QuadHumanoidEnvCfg(DirectRLEnvCfg):
     
     # Spaces
     observation_space = gym.spaces.Box(low=-float('inf'), high=float('inf'), shape=(378,))
-    action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(25,))
+    action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(14,))
     
     def __post_init__(self):
         """Post initialization to set robot configuration."""

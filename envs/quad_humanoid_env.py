@@ -26,6 +26,19 @@ class QuadHumanoidEnv(DirectRLEnv):
         # Find quadrotor body for thrust application
         self._quadrotor_body_idx, _ = self.robot.find_bodies(self.cfg.rotor_body_name)
         
+        # Dynamically identify actuated joints (filter out fixed joints)
+        # Fixed joints in USD: quadrotor, right_foot, left_foot
+        all_joint_names = self.robot.joint_names
+        self._actuated_joint_ids = [
+            i for i, name in enumerate(all_joint_names) 
+            if not any(fixed_name in name for fixed_name in ['quadrotor', 'foot'])
+        ]
+        self.num_actuated_joints = len(self._actuated_joint_ids)
+        
+        print(f"[INFO] Found {len(all_joint_names)} total joints, {self.num_actuated_joints} actuated")
+        print(f"[INFO] All joint names: {all_joint_names}")
+        print(f"[INFO] Actuated joint IDs: {self._actuated_joint_ids}")
+        
         # Action storage for smoothness reward
         self._previous_actions = torch.zeros(
             self.num_envs, self.cfg.num_actions, device=self.device
@@ -60,9 +73,9 @@ class QuadHumanoidEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Process actions before physics step."""
-        # Split actions
-        humanoid_actions = actions[:, :21]  # First 21: humanoid joints
-        thrust_actions = actions[:, 21:25]  # Last 4: rotor thrusts
+        # Split actions based on actual actuated joint count
+        humanoid_actions = actions[:, :self.num_actuated_joints]  # First N: humanoid joints
+        thrust_actions = actions[:, self.num_actuated_joints:]  # Last 4: rotor thrusts
         
         # Scale humanoid actions (torque control)
         self._humanoid_torques = humanoid_actions * self.cfg.action_scale_humanoid
@@ -73,29 +86,16 @@ class QuadHumanoidEnv(DirectRLEnv):
 
     def _apply_action(self) -> None:
         """Apply actions to the robot."""
-        # Apply joint torques to humanoid (first 21 joints)
+        # Apply joint torques to humanoid (only actuated joints)
         self.robot.set_joint_effort_target(
             self._humanoid_torques,
-            joint_ids=list(range(21))
+            joint_ids=self._actuated_joint_ids
         )
-
-        # DEBUG: Print tensor shapes and dtypes before applying rotor thrusts
-        print("[DEBUG] _apply_action: self._rotor_thrusts shape:", self._rotor_thrusts.shape)
 
         total_force = torch.zeros(self.num_envs, 3, device=self.device)
         
-        # Ensure proper shapes and types to avoid CUDA errors
-        rotor_thrusts_safe = self._rotor_thrusts.to(dtype=torch.float32)
-        
-        # Manually compute sum to verify
-        # summed_thrusts = torch.sum(rotor_thrusts_safe, dim=1)
-        # Using explicit view/sum to be safe against stride issues
-        summed_thrusts = rotor_thrusts_safe.sum(dim=-1)
-
-        print("[DEBUG] _apply_action: summed_thrusts shape:", summed_thrusts.shape)
-
         # Sum all rotor forces (all point upward in local Z)
-        total_force[:, 2] = summed_thrusts
+        total_force[:, 2] = self._rotor_thrusts.sum(dim=-1)
 
         # Compute torques from differential thrust (X configuration)
         # Roll (X-axis):  (right side - left side) * arm
