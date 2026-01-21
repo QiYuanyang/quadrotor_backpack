@@ -35,9 +35,10 @@ class QuadHumanoidEnv(DirectRLEnv):
         ]
         self.num_actuated_joints = len(self._actuated_joint_ids)
         
-        print(f"[INFO] Found {len(all_joint_names)} total joints, {self.num_actuated_joints} actuated")
-        print(f"[INFO] All joint names: {all_joint_names}")
-        print(f"[INFO] Actuated joint IDs: {self._actuated_joint_ids}")
+        # Log joint information for debugging
+        if self.cfg.sim.device != "cpu":  # Only log once for GPU
+            print(f"[INFO] Found {len(all_joint_names)} total joints, {self.num_actuated_joints} actuated")
+            print(f"[INFO] Actuated joint IDs: {self._actuated_joint_ids}")
         
         # Action storage for smoothness reward
         self._previous_actions = torch.zeros(
@@ -73,6 +74,14 @@ class QuadHumanoidEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         """Process actions before physics step."""
+        # Validate action dimensions
+        expected_action_dim = self.num_actuated_joints + 4  # humanoid joints + 4 rotor thrusts
+        if actions.shape[1] != expected_action_dim:
+            raise ValueError(
+                f"Action dimension mismatch: expected {expected_action_dim} "
+                f"({self.num_actuated_joints} joints + 4 rotors), got {actions.shape[1]}"
+            )
+        
         # Split actions based on actual actuated joint count
         humanoid_actions = actions[:, :self.num_actuated_joints]  # First N: humanoid joints
         thrust_actions = actions[:, self.num_actuated_joints:]  # Last 4: rotor thrusts
