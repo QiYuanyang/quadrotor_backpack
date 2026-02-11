@@ -15,7 +15,7 @@ models:
     network:
       - name: net
         input: OBSERVATIONS
-        layers: [32, 32]
+        layers: [256, 256, 128]
         activations: elu
     output: ACTIONS
   value:  # see deterministic_model parameters
@@ -24,7 +24,7 @@ models:
     network:
       - name: net
         input: OBSERVATIONS
-        layers: [32, 32]
+        layers: [512, 256, 128]
         activations: elu
     output: ONE
 
@@ -40,12 +40,12 @@ memory:
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   class: PPO
-  rollouts: 32
+  rollouts: 24  # 24 rollouts × 600 steps = 14,400 steps per iteration (~2 min)
   learning_epochs: 8
-  mini_batches: 8
+  mini_batches: 4
   discount_factor: 0.99
   lambda: 0.95
-  learning_rate: 5.0e-04
+  learning_rate: 3.0e-04  # Standard PPO rate, more stable
   learning_rate_scheduler: KLAdaptiveLR
   learning_rate_scheduler_kwargs:
     kl_threshold: 0.008
@@ -59,22 +59,23 @@ agent:
   ratio_clip: 0.2
   value_clip: 0.2
   clip_predicted_values: True
-  entropy_loss_scale: 0.0
+  entropy_loss_scale: 0.01
   value_loss_scale: 2.0
   kl_threshold: 0.0
   rewards_shaper_scale: 0.1
   time_limit_bootstrap: False
   # logging and checkpoint
   experiment:
-    directory: "cartpole_direct"
+    directory: "quadrotor_humanoid_ppo"
     experiment_name: ""
-    write_interval: auto
-    checkpoint_interval: auto
+    write_interval: 1
+    checkpoint_interval: 100000
+    video_interval: 10000
 
 
 # Sequential trainer
 # https://skrl.readthedocs.io/en/latest/api/trainers/sequential.html
 trainer:
   class: SequentialTrainer
-  timesteps: 4800
+  timesteps: 5000000  # 5M steps ≈ 50 iters with 4096 envs × 24 rollouts
   environment_info: log
